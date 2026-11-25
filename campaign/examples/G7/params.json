@@ -1,0 +1,37 @@
+{
+  "run_id": "EX_G7_network_cell",
+  "family": "G7",
+  "level": 0,
+  "rheology": "BirdCarreau",
+  "Re": 5.0,
+  "beta": 16.23,
+  "Cu": 800.0,
+  "n": 0.3568,
+  "a": 2.0,
+  "geometry": {
+    "E": 2.0,
+    "theta_deg": 45.0,
+    "L_in": 5.0,
+    "L_mid": 5.0,
+    "L_out_ratio": 10.0
+  },
+  "n_blocks": 18,
+  "n_cells": 3584,
+  "inlet_height": 1.0,
+  "outlet_heights": [
+    1.0,
+    1.0
+  ],
+  "entry_length": 5.0,
+  "outlet_lengths": [
+    10.0,
+    10.0
+  ],
+  "sample_lines": [
+    "inletProfile",
+    "expansionMid",
+    "nearWallExpansion",
+    "daughter1Mid",
+    "daughter2Mid"
+  ]
+}

@@ -1,0 +1,5 @@
+reading /home/nallasaikirankumar/of/carreau2d/postProcessing/sample/2000/lineX9_p_U.xy
+rel L2 Ux vs 1D Carreau = 0.0893%
+u_max = 0.37382 m/s (1D ref 0.37431)
+G     = 4.1842e+06 Pa/m (1D ref 4.1890e+06, err 0.11%)
+PASS (<2%)

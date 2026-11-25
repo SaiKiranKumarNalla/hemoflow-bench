@@ -1,0 +1,32 @@
+{
+  "run_id": "EX_G2_expansion",
+  "family": "G2",
+  "level": 0,
+  "rheology": "BirdCarreau",
+  "Re": 5.0,
+  "beta": 16.23,
+  "Cu": 1000.0,
+  "n": 0.3568,
+  "a": 2.0,
+  "geometry": {
+    "E": 2.0,
+    "L_in": 5.0,
+    "L_out_ratio": 10.0
+  },
+  "n_blocks": 4,
+  "n_cells": 4480,
+  "inlet_height": 1.0,
+  "outlet_heights": [
+    2.0
+  ],
+  "entry_length": 5.0,
+  "outlet_lengths": [
+    20.0
+  ],
+  "sample_lines": [
+    "inletProfile",
+    "nearWallLower",
+    "centerline",
+    "outletProfile"
+  ]
+}

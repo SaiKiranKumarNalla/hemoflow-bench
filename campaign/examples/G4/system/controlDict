@@ -1,0 +1,125 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+
+application     simpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         5000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   1000;
+purgeWrite      2;
+writeFormat     ascii;
+writePrecision  8;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+
+functions
+{
+    inletPressure
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        executeControl  timeStep;
+        executeInterval 1;
+        writeControl    timeStep;
+        writeInterval   1;
+        writeFields     false;
+        log             false;
+        regionType      patch;
+        name            inlet;
+        operation       areaAverage;
+        fields          (p);
+    }
+
+    qoiProbes
+    {
+        type            probes;
+        libs            ("libsampling.so");
+        executeControl  timeStep;
+        executeInterval 1;
+        writeControl    timeStep;
+        writeInterval   1;
+        fields          (U);
+        probeLocations
+        (
+            (3.212310601 3.681980515 0.5)
+            (3.212310601 -2.681980515 0.5)
+        );
+    }
+
+    writeCellCentres
+    {
+        type            writeCellCentres;
+        libs            (fieldFunctionObjects);
+        writeControl    onEnd;
+    }
+
+    writeCellVolumes
+    {
+        type            writeCellVolumes;
+        libs            (fieldFunctionObjects);
+        writeControl    onEnd;
+    }
+
+    gradU
+    {
+        type            grad;
+        libs            (fieldFunctionObjects);
+        field           U;
+        writeControl    onEnd;
+    }
+
+    sample
+    {
+        type                sets;
+        libs                ("libsampling.so");
+        writeControl        onEnd;
+        interpolationScheme cellPoint;
+        setFormat           raw;
+        fields              (U p);
+        sets
+        {
+            inletProfile
+            {
+                type    uniform;
+                axis    y;
+                start   (-1 0.02 0.5);
+                end     (-1 0.98 0.5);
+                nPoints 80;
+            }
+            daughter1Mid
+            {
+                type    uniform;
+                axis    distance;
+                start   (3.463333509 3.430957608 0.5);
+                end     (2.961287694 3.933003423 0.5);
+                nPoints 80;
+            }
+            daughter2Mid
+            {
+                type    uniform;
+                axis    distance;
+                start   (2.961287694 -2.933003423 0.5);
+                end     (3.463333509 -2.430957608 0.5);
+                nPoints 80;
+            }
+            parentCenterline
+            {
+                type    uniform;
+                axis    x;
+                start   (-4.95 0.5 0.5);
+                end     (0.5106601718 0.5 0.5);
+                nPoints 120;
+            }
+        }
+    }
+}

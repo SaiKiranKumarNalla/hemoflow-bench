@@ -1,0 +1,25 @@
+zhao2d G2 re-validation at Zhao 2008 conditions (star units h1=1, Re=12.2, E=2, L_in=10, L_out=20)
+reattachment via rbc/postprocess.py::reattachment_length (last near-wall ux<0 -> zero crossing)
+target x_r/h1 = 3.0667 ('literature' 230 um at h1=75 um; 224 um gives 2.9867)
+newtonian: reading cfd/openfoam/zhao2d/postProcessing.newtonian/sample/2500/nearWall_p_U.xy
+newtonian: x_r/h1 = 0.5360   (diff vs 3.0667 = 82.52%)   CHECK (>10%)
+carreau  : reading cfd/openfoam/zhao2d/postProcessing.carreau/sample/2500/nearWall_p_U.xy
+carreau  : x_r/h1 = 0.5274   (diff vs 3.0667 = 82.80%)   CHECK (>10%)
+
+
+Pilot timing (e2-medium SPOT, 2 vCPU): cells = 30400, iterations = 2500 (endTime), per run:
+  carreau  : wall_seconds 151.130 wall s
+  newtonian: wall_seconds 231.507 wall s
+  => pilot cost ~ 150-232 s/run (2500 it, 30400 cells); ~0.06-0.09 s per 1000 cell-iterations.
+
+Interpretation: at Re = 12.2 (h1-based, mu_ref = mu_inf) the planar E = 2 expansion has a short
+recirculation bubble (x_r/step ~ 1.07 with step s = 0.5 h1), both for Newtonian and Carreau. The
+224-230 um target (x_r/h1 ~ 3.0 at h1 = 75 um) is ~6x larger and cannot be reproduced by a 2D
+single-phase model at Re = 12.2.
+
+Note: Zhao 2008 (Ann Biomed Eng 36:1130-41) is a 3D rectangular channel (100:200 um, depth not
+reported) at Hct 20-30% with RBC depletion in the corner; Wu et al. 2015 (IJES 95:49-59, OpenFOAM
+two-fluid, Hct 0.20, U_in 0.167/0.833 m/s) matched the recirculation zone only qualitatively.
+A 2D single-phase Newtonian/Carreau model cannot represent the Hct or depth effects — only the
+recirculation/reattachment length is comparable. Re=12.2 itself belongs to Wu 2015's Karino &
+Goldsmith tubular case (77.5 um tube); see knowledge/12-constants-verification.md flag 1.

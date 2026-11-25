@@ -1,0 +1,33 @@
+{
+  "run_id": "EX_G6_serpentine",
+  "family": "G6",
+  "level": 0,
+  "rheology": "BirdCarreau",
+  "Re": 3.0,
+  "beta": 16.23,
+  "Cu": 1500.0,
+  "n": 0.3568,
+  "a": 2.0,
+  "geometry": {
+    "Rc_ratio": 2.5,
+    "n_bends": 2,
+    "L_in": 5.0,
+    "L_straight": 2.0,
+    "L_out_ratio": 10.0
+  },
+  "n_blocks": 7,
+  "n_cells": 3904,
+  "inlet_height": 1.0,
+  "outlet_heights": [
+    1.0
+  ],
+  "entry_length": 5.0,
+  "outlet_lengths": [
+    10.0
+  ],
+  "sample_lines": [
+    "inletProfile",
+    "bend1Apex",
+    "outletProfile"
+  ]
+}

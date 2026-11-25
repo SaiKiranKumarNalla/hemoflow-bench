@@ -1,0 +1,35 @@
+{
+  "run_id": "EX_G5_asym_bifurc",
+  "family": "G5",
+  "level": 0,
+  "rheology": "BirdCarreau",
+  "Re": 6.0,
+  "beta": 12.0,
+  "Cu": 200.0,
+  "n": 0.4,
+  "a": 2.0,
+  "geometry": {
+    "width_ratio": 0.65,
+    "theta_deg": 60.0,
+    "L_in": 5.0,
+    "L_out_ratio": 10.0
+  },
+  "n_blocks": 8,
+  "n_cells": 1536,
+  "inlet_height": 1.0,
+  "outlet_heights": [
+    0.393939393939394,
+    0.6060606060606061
+  ],
+  "entry_length": 5.5,
+  "outlet_lengths": [
+    3.93939393939394,
+    6.0606060606060606
+  ],
+  "sample_lines": [
+    "inletProfile",
+    "daughter1Mid",
+    "daughter2Mid",
+    "parentCenterline"
+  ]
+}

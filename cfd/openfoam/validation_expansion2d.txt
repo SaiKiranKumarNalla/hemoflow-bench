@@ -1,0 +1,3 @@
+reading /home/nallasaikirankumar/of/expansion2d/postProcessing/sample/2500/nearWall_p_U.xy
+Reattachment length L_r = 16.11 um (target 224-230 um, diff vs 224 = 92.81%)
+CHECK (>10%)

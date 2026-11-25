@@ -1,0 +1,16 @@
+FoamFile { version 2.0; format ascii; class dictionary; object transportProperties; }
+// BirdCarreau in STAR UNITS (h1 = 1, U = 1, rho* = 1, mu_ref = mu_inf):
+//   Re = 12.2 (Zhao-condition value per plan/CORPUS_PLAN.md) -> nuInf* = 1/Re
+//   beta = mu0/muInf = 0.056/0.00345 = 16.2319 -> nu0* = beta/Re
+//   k* = Cu = lambda*U/h1. Assumption: Re based on mu_inf, rho = 1060 kg/m^3, h1 = 75 um
+//   (CORPUS_PLAN Zhao h1) -> U = Re*mu_inf/(rho*h1) = 0.5294 m/s -> Cu = 3.313*0.5294/75e-6 = 23388.
+//   (If Re were based on bulk mu ~ 4e-3 Pa s instead, Cu would be ~2.8e4 — flagged in validation_zhao2d.txt.)
+transportModel  BirdCarreau;
+BirdCarreauCoeffs
+{
+    nu0     nu0 [0 2 -1 0 0 0 0] 1.33048;
+    nuInf   nuInf [0 2 -1 0 0 0 0] 0.0819672;
+    k       k [0 0 1 0 0 0 0] 23388;
+    n       n [0 0 0 0 0 0 0] 0.3568;
+    a       a [0 0 0 0 0 0 0] 2;
+}

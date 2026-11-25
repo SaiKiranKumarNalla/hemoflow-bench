@@ -1,0 +1,4 @@
+FoamFile { version 2.0; format ascii; class dictionary; object transportProperties; }
+// Newtonian baseline at the same star-unit Re = 12.2: nu* = 1/Re = 0.0819672 (mu = mu_inf).
+transportModel  Newtonian;
+nu              nu [0 2 -1 0 0 0 0] 0.0819672;

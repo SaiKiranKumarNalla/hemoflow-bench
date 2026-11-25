@@ -1,0 +1,32 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+application     simpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2500;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   500;
+purgeWrite      2;
+writeFormat     ascii;
+writePrecision  6;
+timeFormat      general;
+timePrecision   6;
+
+functions
+{
+    sample
+    {
+        type                sets;
+        libs                ("libsampling.so");
+        writeControl        timeStep;
+        writeInterval       500;
+        interpolationScheme cellPointFace;
+        setFormat           raw;
+        sets
+        {
+            nearWall { type uniform; axis x; start (1e-6 1.25e-6 2.5e-5); end (7.99e-4 1.25e-6 2.5e-5); nPoints 400; }
+        }
+        fields (U p);
+    }
+}

@@ -1,0 +1,5 @@
+reading /home/nallasaikirankumar/of/channel2d/postProcessing/sample/2000/lineX9_p_U.xy
+rel L2 Ux vs Poiseuille = 0.7271%
+centerline u_max = 0.992479 (exact 1.000000)
+pressure p(x=9)  = 7.9602 (exact 8.0000, rel err 0.50%)
+PASS (<2%)

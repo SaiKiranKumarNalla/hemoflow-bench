@@ -1,0 +1,35 @@
+{
+  "run_id": "EX_G4_sym_bifurc",
+  "family": "G4",
+  "level": 0,
+  "rheology": "Newtonian",
+  "Re": 4.0,
+  "beta": null,
+  "Cu": null,
+  "n": null,
+  "a": null,
+  "geometry": {
+    "theta_deg": 45.0,
+    "daughter_ratio": 0.75,
+    "L_in": 5.0,
+    "L_out_ratio": 10.0
+  },
+  "n_blocks": 8,
+  "n_cells": 1664,
+  "inlet_height": 1.0,
+  "outlet_heights": [
+    0.75,
+    0.75
+  ],
+  "entry_length": 5.5,
+  "outlet_lengths": [
+    7.5,
+    7.5
+  ],
+  "sample_lines": [
+    "inletProfile",
+    "daughter1Mid",
+    "daughter2Mid",
+    "parentCenterline"
+  ]
+}
