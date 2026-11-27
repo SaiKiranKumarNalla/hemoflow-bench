@@ -44,7 +44,7 @@ function cmap(t, mode = "seq") {
 
 // ---------- index + controls ----------
 async function boot() {
-  const resp = await fetch(DATA + "index.json");
+  const resp = await fetch(DATA + "index.json?v=3");
   INDEX = await resp.json();
   $("status-pill").textContent = `${INDEX.n_runs_total} runs · ${(INDEX.total_bundle_bytes / 1e6).toFixed(1)} MB`;
   const fs = $("family-select");

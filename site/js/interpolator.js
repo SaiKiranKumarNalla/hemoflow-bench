@@ -44,7 +44,7 @@ export function decodeRun(run) {
 
 export async function loadFamily(family, dataBase = "data/") {
   if (cache.has(family)) return cache.get(family);
-  const resp = await fetch(`${dataBase}${family}.bin.gz`);
+  const resp = await fetch(`${dataBase}${family}.bin.gz?v=3`);
   if (!resp.ok) throw new Error(`failed to load ${family}.bin.gz`);
   const gz = new Uint8Array(await resp.arrayBuffer());
   const raw = await gunzipBytes(gz);
@@ -105,9 +105,22 @@ function dist2(a, b) {
   return s;
 }
 
+function maskIoU(a, b) {
+  let inter = 0, uni = 0;
+  for (let i = 0; i < a.length; i++) {
+    const ai = a[i], bi = b[i];
+    if (ai || bi) {
+      uni++;
+      if (ai && bi) inter++;
+    }
+  }
+  return uni > 0 ? inter / uni : 1;
+}
+
 /**
- * Interpolate top-k nearest runs of a family/variant at target params using sharp RBF weights.
- * Returns { nx, ny, x0, x1, y0, y1, mask(Uint8), fields:{name:Float32Array}, nearest, dist, exact }
+ * Interpolate top-k nearest runs of a family/variant at target params.
+ * Never blends binary fluid masks across distinct geometries: uses ``nearest.mask``
+ * and ``nearest``'s exact physical bounds so bends/branches are always 100% connected.
  */
 export function interpolate(obj, variant, target, sigma = 0.16, topK = 4) {
   const runs = obj.runs.filter(r => r.variant === variant);
@@ -121,43 +134,47 @@ export function interpolate(obj, variant, target, sigma = 0.16, topK = 4) {
   scored.sort((a, b) => a.d2 - b.d2);
   const nearest = scored[0].r;
   const best = scored[0].d2;
-  const nx = runs[0].nx, ny = runs[0].ny, n = nx * ny;
+  const nx = nearest.nx, ny = nearest.ny, n = nx * ny;
+  const x0 = nearest.x[0], x1 = nearest.x[nx - 1], y0 = nearest.y[0], y1 = nearest.y[ny - 1];
 
-  // Exact or near-exact run: return unblurred raw decoded fields
-  if (best < 1e-8) {
-    let x0 = nearest.x[0], x1 = nearest.x[nx - 1], y0 = nearest.y[0], y1 = nearest.y[ny - 1];
-    return { nx, ny, x0, x1, y0, y1, mask: nearest.mask, fields: nearest.fields, nearest, dist: Math.sqrt(best), exact: nearest };
+  // Filter neighbors that share essentially the same geometry mask (IoU >= 0.92)
+  const sameGeom = scored.filter(s => s.r.nx === nx && s.r.ny === ny && maskIoU(s.r.mask, nearest.mask) >= 0.92).slice(0, topK);
+
+  // Exact match or no same-geometry neighbors -> return exact unblurred run fields
+  if (best < 1e-8 || sameGeom.length <= 1) {
+    return {
+      nx, ny, x0, x1, y0, y1,
+      mask: nearest.mask,
+      fields: nearest.fields,
+      nearest,
+      dist: Math.sqrt(best),
+      exact: best < 1e-8 ? nearest : null,
+    };
   }
 
-  const sub = scored.slice(0, Math.min(topK, scored.length));
-  let wsum = 0; for (const s of sub) wsum += s.w;
-  if (wsum < 1e-12) { for (const s of sub) s.w = 1 / (s.d2 + 1e-6); wsum = 0; for (const s of sub) wsum += s.w; }
+  let wsum = 0; for (const s of sameGeom) wsum += s.w;
+  if (wsum < 1e-12) { for (const s of sameGeom) s.w = 1 / (s.d2 + 1e-6); }
 
-  const mask = new Uint8Array(n);
-  const fieldNames = Object.keys(runs[0].fields);
+  const fieldNames = Object.keys(nearest.fields);
   const out = {};
   for (const f of fieldNames) out[f] = new Float32Array(n);
-  let x0 = 0, x1 = 0, y0 = 0, y1 = 0, wacc = 0;
-  for (const s of sub) {
-    const r = s.r, w = s.w;
-    x0 += w * r.x[0]; x1 += w * r.x[nx - 1]; y0 += w * r.y[0]; y1 += w * r.y[ny - 1]; wacc += w;
-  }
-  x0 /= wacc; x1 /= wacc; y0 /= wacc; y1 /= wacc;
 
   for (let i = 0; i < n; i++) {
-    let mw = 0, wm = 0;
+    if (!nearest.mask[i]) continue;
+    let mw = 0;
     const acc = {};
     for (const f of fieldNames) acc[f] = 0;
-    for (const s of sub) {
+    for (const s of sameGeom) {
       const r = s.r, w = s.w;
       if (r.mask[i]) { mw += w; for (const f of fieldNames) acc[f] += w * r.fields[f][i]; }
-      wm += w;
     }
-    if (wm > 0) mask[i] = (mw / wm) >= 0.5 ? 1 : 0;
-    if (mw > 1e-12) for (const f of fieldNames) out[f][i] = acc[f] / mw;
-    else for (const f of fieldNames) out[f][i] = 0;
+    if (mw > 1e-12) {
+      for (const f of fieldNames) out[f][i] = acc[f] / mw;
+    } else {
+      for (const f of fieldNames) out[f][i] = nearest.fields[f][i];
+    }
   }
-  return { nx, ny, x0, x1, y0, y1, mask, fields: out, nearest, dist: Math.sqrt(best), exact: null };
+  return { nx, ny, x0, x1, y0, y1, mask: nearest.mask, fields: out, nearest, dist: Math.sqrt(best), exact: null };
 }
 
 /** Compute a derived field (speed/shear/vort/p/phi) using true physical dx, dy spacing. */
