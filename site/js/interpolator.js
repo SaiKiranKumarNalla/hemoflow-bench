@@ -106,35 +106,40 @@ function dist2(a, b) {
 }
 
 /**
- * Interpolate a family's runs of a given variant at target params.
+ * Interpolate top-k nearest runs of a family/variant at target params using sharp RBF weights.
  * Returns { nx, ny, x0, x1, y0, y1, mask(Uint8), fields:{name:Float32Array}, nearest, dist, exact }
- * fields are in INDEX space (i,j) on the family grid; mask is thresholded weighted mask.
  */
-export function interpolate(obj, variant, target, sigma = 0.35) {
+export function interpolate(obj, variant, target, sigma = 0.16, topK = 4) {
   const runs = obj.runs.filter(r => r.variant === variant);
   if (!runs.length) return null;
   const tf = features(obj, target.geometry_params, target.Re, target.phi_in);
-  const ws = [], ds = [];
-  let nearest = null, best = Infinity;
+  const scored = [];
   for (const r of runs) {
     const d2 = dist2(tf, runFeatures(obj, r));
-    ds.push(d2);
-    if (d2 < best) { best = d2; nearest = r; }
-    ws.push(Math.exp(-d2 / (2 * sigma * sigma)));
+    scored.push({ r, d2, w: Math.exp(-d2 / (2 * sigma * sigma)) });
   }
-  // Shepard fallback if all weights underflow
-  let wsum = 0; for (const w of ws) wsum += w;
-  if (wsum < 1e-12) { for (let i = 0; i < ws.length; i++) ws[i] = 1 / (ds[i] + 1e-6); wsum = 0; for (const w of ws) wsum += w; }
-
+  scored.sort((a, b) => a.d2 - b.d2);
+  const nearest = scored[0].r;
+  const best = scored[0].d2;
   const nx = runs[0].nx, ny = runs[0].ny, n = nx * ny;
+
+  // Exact or near-exact run: return unblurred raw decoded fields
+  if (best < 1e-8) {
+    let x0 = nearest.x[0], x1 = nearest.x[nx - 1], y0 = nearest.y[0], y1 = nearest.y[ny - 1];
+    return { nx, ny, x0, x1, y0, y1, mask: nearest.mask, fields: nearest.fields, nearest, dist: Math.sqrt(best), exact: nearest };
+  }
+
+  const sub = scored.slice(0, Math.min(topK, scored.length));
+  let wsum = 0; for (const s of sub) wsum += s.w;
+  if (wsum < 1e-12) { for (const s of sub) s.w = 1 / (s.d2 + 1e-6); wsum = 0; for (const s of sub) wsum += s.w; }
+
   const mask = new Uint8Array(n);
   const fieldNames = Object.keys(runs[0].fields);
   const out = {};
   for (const f of fieldNames) out[f] = new Float32Array(n);
-  // weighted extent
   let x0 = 0, x1 = 0, y0 = 0, y1 = 0, wacc = 0;
-  for (let k = 0; k < runs.length; k++) {
-    const r = runs[k], w = ws[k];
+  for (const s of sub) {
+    const r = s.r, w = s.w;
     x0 += w * r.x[0]; x1 += w * r.x[nx - 1]; y0 += w * r.y[0]; y1 += w * r.y[ny - 1]; wacc += w;
   }
   x0 /= wacc; x1 /= wacc; y0 /= wacc; y1 /= wacc;
@@ -143,8 +148,8 @@ export function interpolate(obj, variant, target, sigma = 0.35) {
     let mw = 0, wm = 0;
     const acc = {};
     for (const f of fieldNames) acc[f] = 0;
-    for (let k = 0; k < runs.length; k++) {
-      const r = runs[k], w = ws[k];
+    for (const s of sub) {
+      const r = s.r, w = s.w;
       if (r.mask[i]) { mw += w; for (const f of fieldNames) acc[f] += w * r.fields[f][i]; }
       wm += w;
     }
@@ -152,7 +157,7 @@ export function interpolate(obj, variant, target, sigma = 0.35) {
     if (mw > 1e-12) for (const f of fieldNames) out[f][i] = acc[f] / mw;
     else for (const f of fieldNames) out[f][i] = 0;
   }
-  return { nx, ny, x0, x1, y0, y1, mask, fields: out, nearest, dist: Math.sqrt(best), exact: best < 1e-9 ? nearest : null };
+  return { nx, ny, x0, x1, y0, y1, mask, fields: out, nearest, dist: Math.sqrt(best), exact: null };
 }
 
 /** Compute a derived field (speed/shear/vort/p/phi) using true physical dx, dy spacing. */

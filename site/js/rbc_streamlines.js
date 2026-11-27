@@ -109,7 +109,7 @@ export class RBCParticles {
     if (!pool.length) return null;
     const dxCell = (map.x1 - map.x0) / Math.max(map.nx - 1, 1);
     const dyCell = (map.y1 - map.y0) / Math.max(map.ny - 1, 1);
-    for (let attempt = 0; attempt < 150; attempt++) {
+    for (let attempt = 0; attempt < 200; attempt++) {
       const idx = pool[(this.rng() * pool.length) | 0];
       const i = idx % map.nx, j = (idx / map.nx) | 0;
       const x = map.gx(i) + (this.rng() - 0.5) * dxCell;
@@ -119,11 +119,12 @@ export class RBCParticles {
       if (this.phiWeight && this.phi) {
         const ph = sample(map, this.phi, this.mask, x, y);
         if (!isFinite(ph)) continue;
-        // Contrast boost around CFL wall depletion (keeps dense core, rarefies depleted wall layer)
-        const ratio = Math.max(0, ph / Math.max(this.phiMax, 1e-6));
-        const acceptProb = this.phiMin < this.phiMax * 0.92
-          ? Math.pow(Math.max(0, (ph - 0.55 * this.phiMin) / Math.max(this.phiMax - 0.55 * this.phiMin, 1e-5)), 1.35)
-          : ratio;
+        // Sharp CFL exclusion: strongly reject near-wall plasma-rich band (phi < 0.55 * phi_core)
+        const ref = Math.max(this.phiCore, this.phiMax, 1e-5);
+        const rel = ph / ref;
+        const acceptProb = this.phiMin < ref * 0.85
+          ? (rel < 0.55 ? 0.02 * (rel / 0.55) : Math.pow((rel - 0.55) / 0.45, 1.4))
+          : Math.max(0, rel);
         if (this.rng() > acceptProb) continue;
       }
       const sh = this._shear ? sample(map, this._shear, this.mask, x, y) : 0;
@@ -131,7 +132,7 @@ export class RBCParticles {
       return {
         x, y,
         rot: Math.atan2(v[1], v[0]),
-        elong: Math.min(0.65, Math.abs(shear) * 0.015),
+        elong: Math.min(0.6, Math.abs(shear) * 0.015),
         shear,
         age: this.rng() * 2,
       };
@@ -145,17 +146,32 @@ export class RBCParticles {
     this.fluidCells = [];
     this.inletCells = [];
     let phiMax = 1e-9, phiMin = Infinity;
+    const phiVals = [];
+    const nx = map.nx, ny = map.ny;
     for (let idx = 0; idx < mask.length; idx++) {
       if (!mask[idx]) continue;
-      this.fluidCells.push(idx);
-      const i = idx % map.nx;
-      if (i <= Math.max(2, Math.floor(0.03 * map.nx))) this.inletCells.push(idx);
+      const i = idx % nx, j = (idx / nx) | 0;
+      // Exclude immediate wall-adjacent boundary pixels when weighting for CFL so glyphs never bleed onto solid walls
+      const touchesWall = (i > 0 && !mask[idx - 1]) || (i < nx - 1 && !mask[idx + 1])
+        || (j > 0 && !mask[idx - nx]) || (j < ny - 1 && !mask[idx + nx]);
+      if (!phiWeight || !touchesWall) this.fluidCells.push(idx);
+      if (i <= Math.max(2, Math.floor(0.03 * nx)) && (!phiWeight || !touchesWall)) this.inletCells.push(idx);
       if (phi) {
         phiMax = Math.max(phiMax, phi[idx]);
         phiMin = Math.min(phiMin, phi[idx]);
+        phiVals.push(phi[idx]);
       }
     }
-    if (!phi) phiMin = 0;
+    if (!this.fluidCells.length) {
+      for (let idx = 0; idx < mask.length; idx++) if (mask[idx]) this.fluidCells.push(idx);
+    }
+    if (!phi) {
+      phiMin = 0;
+      this.phiCore = 1.0;
+    } else {
+      phiVals.sort((a, b) => a - b);
+      this.phiCore = phiVals[Math.min(phiVals.length - 1, Math.floor(phiVals.length * 0.85))] || phiMax;
+    }
     this.phiMax = phiMax;
     this.phiMin = isFinite(phiMin) ? phiMin : 0;
     this.p = [];
@@ -188,7 +204,7 @@ export class RBCParticles {
       q.x += v2[0] * advScale;
       q.y += v2[1] * advScale;
       if (q.x > map.x1 - 0.005 * xSpan || q.x < map.x0 || q.y < map.y0 || q.y > map.y1 ||
-          !velocityAt(map, this.ux, this.uy, this.mask, q.x, q.y)) {
+        !velocityAt(map, this.ux, this.uy, this.mask, q.x, q.y)) {
         const rep = this._spawnAlongField(true);
         if (rep) this.p[idx] = rep;
         continue;
@@ -208,21 +224,23 @@ export class RBCParticles {
     }
   }
 
-  draw(ctx, toPx) {
+  draw(ctx, toPx, channelPxHeight = 60) {
     const tauLo = 8.0; // elevated shear-rate highlight threshold in star units
+    const baseL = Math.max(2.8, Math.min(5.2, channelPxHeight * 0.075));
+    const baseW = baseL * 0.45;
     for (const q of this.p) {
       const [px, py] = toPx(q.x, q.y);
-      const L = 6.2 * (1 + q.elong), W = 3.0 * (1 - 0.25 * q.elong);
+      const L = baseL * (1 + q.elong), W = baseW * (1 - 0.25 * q.elong);
       ctx.save();
       ctx.translate(px, py);
       ctx.rotate(q.rot);
       // Outer biconcave discoid
       ctx.beginPath();
       ctx.ellipse(0, 0, L, W, 0, 0, Math.PI * 2);
-      ctx.fillStyle = q.shear > tauLo ? "rgba(244,63,94,0.92)" : "rgba(225,29,72,0.86)";
+      ctx.fillStyle = q.shear > tauLo ? "rgba(244,63,94,0.94)" : "rgba(225,29,72,0.88)";
       ctx.fill();
-      ctx.lineWidth = q.shear > tauLo ? 1.5 : 0.7;
-      ctx.strokeStyle = q.shear > tauLo ? "#fbbf24" : "rgba(255,255,255,0.65)";
+      ctx.lineWidth = q.shear > tauLo ? 1.4 : 0.7;
+      ctx.strokeStyle = q.shear > tauLo ? "#fbbf24" : "rgba(255,255,255,0.7)";
       ctx.stroke();
       // Central pallor dimple
       ctx.beginPath();

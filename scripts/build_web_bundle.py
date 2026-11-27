@@ -38,12 +38,13 @@ except Exception:  # pragma: no cover - fallback if hemoflow not installed
     FAMILIES, FLOW_PARAMS, VARIANTS = {}, [], {}
 
 FIELD_KEYS = ("grid_ux", "grid_uy", "grid_p", "grid_phi")
-MAX_DIM = 128
+MAX_X = 256
+MAX_Y = 256
 QOI_KEYS = ("dp_star", "xr_over_h1", "cfl_over_h_local", "cfl_thickness_star",
             "f_window", "max_phi", "min_phi", "max_wall_tau_star", "max_slip", "outlet_phi_mean")
 
 
-def _factor(dim: int, cap: int = MAX_DIM) -> int:
+def _factor(dim: int, cap: int) -> int:
     return max(1, -(-dim // cap))  # ceil(dim / cap)
 
 
@@ -52,6 +53,20 @@ def _block_mean(arr: np.ndarray, fx: int, fy: int) -> np.ndarray:
     ny2, nx2 = ny // fy, nx // fx
     a = arr[: ny2 * fy, : nx2 * fx].astype(np.float32)
     return a.reshape(ny2, fy, nx2, fx).mean(axis=(1, 3))
+
+
+def _masked_block_mean(arr: np.ndarray, gm: np.ndarray, fx: int, fy: int) -> np.ndarray:
+    if fx == 1 and fy == 1:
+        return arr.astype(np.float32)
+    ny, nx = arr.shape
+    ny2, nx2 = ny // fy, nx // fx
+    m2d = gm[: ny2 * fy, : nx2 * fx].astype(np.float32)
+    a2d = np.where(m2d > 0.5, arr[: ny2 * fy, : nx2 * fx].astype(np.float32), 0.0)
+    w = m2d.reshape(ny2, fy, nx2, fx).sum(axis=(1, 3))
+    a = a2d.reshape(ny2, fy, nx2, fx).sum(axis=(1, 3))
+    out = np.zeros((ny2, nx2), dtype=np.float32)
+    np.divide(a, w, out=out, where=w > 0)
+    return out
 
 
 def _b64(arr: np.ndarray) -> str:
@@ -108,7 +123,7 @@ def encode_run(npz_path: Path) -> dict:
     z = np.load(npz_path)
     gx, gy, gm = z["grid_x"], z["grid_y"], z["grid_mask"]
     nx, ny = gx.shape[0], gy.shape[0]
-    fx, fy = _factor(nx), _factor(ny)
+    fx, fy = _factor(nx, MAX_X), _factor(ny, MAX_Y)
     nx2, ny2 = nx // fx, ny // fy
     # downsampled coordinate arrays (block-mean of the uniform grid)
     xd = _block_mean(gx.astype(np.float32)[None, :], fx, 1)[0]
@@ -124,7 +139,8 @@ def encode_run(npz_path: Path) -> dict:
     for key in FIELD_KEYS:
         if key not in z.files:
             continue
-        a = _block_mean(z[key].astype(np.float32), fx, fy)
+        a = _masked_block_mean(z[key], gm, fx, fy)
+        a[~mask] = 0.0
         fmin = float(a[mask].min()) if mask.any() else 0.0
         fmax = float(a[mask].max()) if mask.any() else 1.0
         if fmax <= fmin:
@@ -183,7 +199,7 @@ def build(src: Path, out: Path) -> dict:
     index = {
         "version": "0.2.0",
         "generator": "hemoflow build-web-bundle",
-        "max_grid_dim": MAX_DIM,
+        "max_grid_dim": [MAX_X, MAX_Y],
         "flow_params": FLOW_PARAMS,
         "variants": VARIANTS,
         "families": {},

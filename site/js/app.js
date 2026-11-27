@@ -9,7 +9,7 @@ let FAM = null;            // current family decoded object
 let STATE = {
   family: "G2", variant: "V4", field: "phi",
   geo: {}, Re: 10, phi_in: 0.3, h_um: 110,
-  rbcCount: 280, showLines: true, showRBC: true, phiWeight: true,
+  rbcCount: 280, showLines: true, showRBC: true, phiWeight: true, expandY: true,
   probeX: null,
 };
 let interp = null;         // current interpolated result
@@ -25,9 +25,18 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 function mix(c1, c2, t) { return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)]; }
 const SEQ = [[5, 8, 15], [19, 78, 74], [45, 212, 191], [251, 191, 36], [225, 29, 72]];
 const DIV = [[33, 102, 172], [247, 247, 247], [225, 29, 72]];
-function cmap(t, diverging) {
+// High-contrast CFL palette for phi: deep navy -> bright plasma cyan (CFL!) -> pale mist -> amber -> deep RBC crimson
+const PHI_CMAP = [
+  [8, 48, 107],
+  [14, 165, 233],
+  [165, 243, 252],
+  [253, 224, 71],
+  [244, 63, 94],
+  [159, 18, 57],
+];
+function cmap(t, mode = "seq") {
   t = Math.max(0, Math.min(1, t));
-  const stops = diverging ? DIV : SEQ;
+  const stops = mode === "div" ? DIV : (mode === "phi" ? PHI_CMAP : SEQ);
   const x = t * (stops.length - 1);
   const i = Math.min(stops.length - 2, Math.floor(x));
   return mix(stops[i], stops[i + 1], x - i);
@@ -48,19 +57,20 @@ async function boot() {
   $("variant-select").value = STATE.variant;
   $("field-select").value = STATE.field;
 
-  fs.onchange = () => { STATE.family = fs.value; STATE.probeX = null; buildSliders(false); refresh(); };
+  fs.onchange = async () => { STATE.family = fs.value; STATE.probeX = null; buildSliders(false); await loadAndSnapDefault(); };
   $("variant-select").onchange = e => { STATE.variant = e.target.value; refresh(); };
   $("field-select").onchange = e => { STATE.field = e.target.value; rebuildFieldTexture(); renderFrame(); };
   $("rbc-count").oninput = e => { STATE.rbcCount = +e.target.value; $("rbc-count-val").textContent = e.target.value; resetParticles(); };
   $("show-streamlines").onchange = e => { STATE.showLines = e.target.checked; renderFrame(); };
   $("show-rbcs").onchange = e => { STATE.showRBC = e.target.checked; renderFrame(); };
   $("phi-weight").onchange = e => { STATE.phiWeight = e.target.checked; resetParticles(); };
+  $("expand-y").onchange = e => { STATE.expandY = e.target.checked; renderFrame(); };
   $("snap-btn").onclick = snapToNearest;
   $("exact-run-select").onchange = e => { if (e.target.value) applyExactRun(e.target.value); };
   $("copy-btn").onclick = copySnippet;
 
   buildSliders(false);
-  await refresh();
+  await loadAndSnapDefault();
 
   const cv = $("main-canvas");
   cv.addEventListener("mousemove", onProbe);
@@ -106,7 +116,22 @@ function sliderRow(label, min, max, step, val, oninput, isInt = false) {
   return div;
 }
 
-// ---------- refresh: load family, interpolate, render ----------
+// ---------- refresh: load family, snap default run, interpolate, render ----------
+async function loadAndSnapDefault() {
+  FAM = await loadFamily(STATE.family, DATA);
+  doInterpolate();
+  // On initial load / family switch, snap to the closest exact FEniCSx V4 run so the CFL is crisp & unblurred
+  if (interp?.nearest) {
+    const r = interp.nearest;
+    STATE.geo = { ...r.geometry_params };
+    if (r.Re != null) STATE.Re = r.Re;
+    if (r.phi_in != null) STATE.phi_in = r.phi_in;
+    if (r.h_um != null) STATE.h_um = r.h_um;
+    buildSliders(true);
+  }
+  await refresh();
+}
+
 async function refresh() {
   FAM = await loadFamily(STATE.family, DATA);
   doInterpolate();
@@ -157,14 +182,22 @@ function viewTransform() {
   const W = cv.width, H = cv.height;
   const dx = Math.max(1e-6, interp.x1 - interp.x0), dy = Math.max(1e-6, interp.y1 - interp.y0);
   const pad = 16;
-  const s = Math.min((W - 2 * pad) / dx, (H - 2 * pad) / dy);
-  const ox = (W - dx * s) / 2, oy = (H - dy * s) / 2;
-  return { W, H, s, ox, oy, dx, dy };
+  const sx = (W - 2 * pad) / dx;
+  const syIso = (H - 2 * pad) / dy;
+  // Auto-expand Y (up to 3.2x sx) for long thin channels (dx/dy > 2.8) so the wall CFL band is clearly legible
+  let sX = Math.min(sx, syIso);
+  let sY = sX;
+  if (STATE.expandY && dx / dy > 2.8) {
+    sX = sx;
+    sY = Math.min(syIso, sX * 3.2);
+  }
+  const ox = (W - dx * sX) / 2, oy = (H - dy * sY) / 2;
+  return { W, H, sX, sY, ox, oy, dx, dy };
 }
 
 function toPx(x, y) {
   const v = viewTransform();
-  return [v.ox + (x - interp.x0) * v.s, v.oy + (interp.y1 - y) * v.s];
+  return [v.ox + (x - interp.x0) * v.sX, v.oy + (interp.y1 - y) * v.sY];
 }
 
 function fieldArray() {
@@ -175,6 +208,10 @@ function fieldRange(arr) {
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < arr.length; i++) if (interp.mask[i]) { if (arr[i] < lo) lo = arr[i]; if (arr[i] > hi) hi = arr[i]; }
   if (!isFinite(lo)) { lo = 0; hi = 1; }
+  // For phi, anchor lower colorbar near zero (0 .. max(phi)) so blue CFL stands out unmistakably
+  if (STATE.field === "phi" && STATE.variant !== "V4-V1") {
+    lo = Math.min(lo, 0.0);
+  }
   if (hi - lo < 1e-9) hi = lo + 1e-6;
   return [lo, hi];
 }
@@ -185,42 +222,70 @@ function rebuildFieldTexture() {
   const [lo, hi] = fieldRange(arr);
   activeRange = [lo, hi];
   activeDiv = STATE.field === "p" || STATE.field === "vort" || STATE.variant === "V4-V1";
+  const mode = activeDiv ? "div" : (STATE.field === "phi" ? "phi" : "seq");
   const nx = interp.nx, ny = interp.ny;
   const off = document.createElement("canvas");
   off.width = nx; off.height = ny;
   const octx = off.getContext("2d");
   const img = octx.createImageData(nx, ny);
+  // 1) Color all fluid pixels cleanly
   for (let j = 0; j < ny; j++) {
-    // Flip vertically so j=0 (y_min) renders at bottom of canvas
     const outJ = ny - 1 - j;
     for (let i = 0; i < nx; i++) {
       const idx = j * nx + i;
       const p = (outJ * nx + i) * 4;
       if (!interp.mask[idx]) {
-        img.data[p] = 17; img.data[p + 1] = 28; img.data[p + 2] = 48; img.data[p + 3] = 255; // solid wall tint
+        img.data[p] = 0; img.data[p + 1] = 0; img.data[p + 2] = 0; img.data[p + 3] = 0;
         continue;
       }
       let t = (arr[idx] - lo) / (hi - lo);
-      if (activeDiv) {
+      if (mode === "div") {
         const mAbs = Math.max(Math.abs(lo), Math.abs(hi), 1e-9);
         t = 0.5 + 0.5 * Math.max(-1, Math.min(1, arr[idx] / mAbs));
+      } else if (mode === "phi") {
+        t = Math.pow(Math.max(0, Math.min(1, t)), 1.25);
       }
-      const [r, g, b] = cmap(t, activeDiv);
+      const [r, g, b] = cmap(t, mode);
       img.data[p] = r; img.data[p + 1] = g; img.data[p + 2] = b; img.data[p + 3] = 255;
+    }
+  }
+  // 2) Bleed neighbor fluid RGB into adjacent transparent solid pixels (alpha stays 0) so bilinear
+  // drawImage() anti-aliases slanted diagonal walls without dark muddy edge fringes.
+  for (let j = 0; j < ny; j++) {
+    const outJ = ny - 1 - j;
+    for (let i = 0; i < nx; i++) {
+      const idx = j * nx + i;
+      if (interp.mask[idx]) continue;
+      let rSum = 0, gSum = 0, bSum = 0, cnt = 0;
+      for (const [di, dj] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || ni >= nx || nj < 0 || nj >= ny) continue;
+        const nIdx = nj * nx + ni;
+        if (!interp.mask[nIdx]) continue;
+        const np = ((ny - 1 - nj) * nx + ni) * 4;
+        rSum += img.data[np]; gSum += img.data[np + 1]; bSum += img.data[np + 2]; cnt++;
+      }
+      if (cnt > 0) {
+        const p = (outJ * nx + i) * 4;
+        img.data[p] = (rSum / cnt) | 0;
+        img.data[p + 1] = (gSum / cnt) | 0;
+        img.data[p + 2] = (bSum / cnt) | 0;
+        img.data[p + 3] = 0;
+      }
     }
   }
   octx.putImageData(img, 0, 0);
   bgCanvas = off;
-  drawColorbar(lo, hi, activeDiv);
+  drawColorbar(lo, hi, mode);
 }
 
-function drawColorbar(lo, hi, div) {
+function drawColorbar(lo, hi, mode) {
   const cb = $("colorbar"), c = cb.getContext("2d");
   const W = cb.width, H = cb.height;
   c.clearRect(0, 0, W, H);
   for (let y = 0; y < H; y++) {
     const t = 1 - y / (H - 1);
-    const [r, g, b] = cmap(t, div);
+    const [r, g, b] = cmap(t, mode);
     c.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
     c.fillRect(0, y, W, 1);
   }
@@ -237,40 +302,40 @@ function renderFrame() {
   if (!interp || !bgCanvas) return;
   const cv = $("main-canvas");
   const ctx = cv.getContext("2d");
-  ctx.fillStyle = "#05080f";
+  ctx.fillStyle = "#08111f";
   ctx.fillRect(0, 0, cv.width, cv.height);
   const v = viewTransform();
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(bgCanvas, v.ox, v.oy, v.dx * v.s, v.dy * v.s);
+  ctx.drawImage(bgCanvas, v.ox, v.oy, v.dx * v.sX, v.dy * v.sY);
 
   if (STATE.showLines) {
-    ctx.strokeStyle = "rgba(255,255,255,0.28)";
-    ctx.lineWidth = 0.75;
+    ctx.strokeStyle = "rgba(255,255,255,0.32)";
+    ctx.lineWidth = 0.8;
     for (const ln of streamlines) {
       ctx.beginPath();
       for (let k = 0; k < ln.length; k++) {
-        const px = v.ox + (ln[k][0] - interp.x0) * v.s;
-        const py = v.oy + (interp.y1 - ln[k][1]) * v.s;
+        const px = v.ox + (ln[k][0] - interp.x0) * v.sX;
+        const py = v.oy + (interp.y1 - ln[k][1]) * v.sY;
         if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.stroke();
     }
   }
   if (STATE.showRBC && particles) {
-    particles.draw(ctx, (x, y) => [v.ox + (x - interp.x0) * v.s, v.oy + (interp.y1 - y) * v.s]);
+    particles.draw(ctx, (x, y) => [v.ox + (x - interp.x0) * v.sX, v.oy + (interp.y1 - y) * v.sY], v.sY);
   }
   if (STATE.probeX != null) {
-    const px = v.ox + (STATE.probeX - interp.x0) * v.s;
+    const px = v.ox + (STATE.probeX - interp.x0) * v.sX;
     ctx.strokeStyle = "rgba(251,191,36,0.85)";
     ctx.lineWidth = 1.2;
     ctx.setLineDash([5, 4]);
     ctx.beginPath();
-    ctx.moveTo(px, v.oy); ctx.lineTo(px, v.oy + v.dy * v.s);
+    ctx.moveTo(px, v.oy); ctx.lineTo(px, v.oy + v.dy * v.sY);
     ctx.stroke();
     ctx.setLineDash([]);
-    $("probe-label").textContent = `probe x* = ${STATE.probeX.toFixed(2)}`;
+    $("probe-label").textContent = `probe x* = ${STATE.probeX.toFixed(2)}` + (v.sY > v.sX * 1.05 ? ` (Y ×${(v.sY / v.sX).toFixed(1)})` : "");
   } else {
-    $("probe-label").textContent = "hover channel to probe u*(y), φ(y)";
+    $("probe-label").textContent = "hover channel to probe u*(y), φ(y)" + (v.sY > v.sX * 1.05 ? ` · Y ×${(v.sY / v.sX).toFixed(1)}` : "");
   }
 }
 
@@ -296,7 +361,7 @@ function onProbe(e) {
   const r = cv.getBoundingClientRect();
   const px = (e.clientX - r.left) * (cv.width / r.width);
   const v = viewTransform();
-  const x = interp.x0 + (px - v.ox) / v.s;
+  const x = interp.x0 + (px - v.ox) / v.sX;
   if (x < interp.x0 || x > interp.x1) { STATE.probeX = null; }
   else STATE.probeX = x;
   drawCharts();
@@ -322,17 +387,29 @@ function plotChart(cv, interpObj, i, field, color, label) {
   ctx.fillStyle = "#05080f"; ctx.fillRect(0, 0, W, H);
   const ny = interpObj.ny, nx = interpObj.nx;
   const vals = [];
-  for (let j = 0; j < ny; j++) vals.push(interpObj.mask[j * nx + i] ? interpObj.fields[field][j * nx + i] : NaN);
+  let jMin = ny, jMax = -1;
   let lo = Infinity, hi = -Infinity;
-  for (const v of vals) if (isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
-  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  for (let j = 0; j < ny; j++) {
+    const ok = interpObj.mask[j * nx + i];
+    const v = ok ? interpObj.fields[field][j * nx + i] : NaN;
+    vals.push(v);
+    if (isFinite(v)) {
+      jMin = Math.min(jMin, j);
+      jMax = Math.max(jMax, j);
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+  }
+  if (!isFinite(lo) || jMax < jMin) return;
+  if (field === "phi") lo = Math.min(lo, 0.0);
   if (hi - lo < 1e-6) { lo -= 0.05; hi += 0.05; }
+  const jSpan = Math.max(1, jMax - jMin);
   ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
   let started = false;
-  for (let j = 0; j < ny; j++) {
+  for (let j = jMin; j <= jMax; j++) {
     if (!isFinite(vals[j])) { started = false; continue; }
     const x = (vals[j] - lo) / (hi - lo) * (W - 36) + 12;
-    const y = H - (j / (ny - 1)) * (H - 30) - 6;
+    const y = H - ((j - jMin) / jSpan) * (H - 30) - 6;
     if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
   }
   ctx.stroke();
