@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools >= 68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hemoflow"
+version = "0.2.0"
+description = "Plug-in/plug-out 2D Euler-Euler blood-flow library (Wu two-phase, COMSOL-compatible stationary solver) + interactive corpus viewer data tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Sai Kiran Kumar Nalla" }]
+keywords = ["microfluidics", "blood", "RBC", "Euler-Euler", "two-phase", "FEniCSx", "COMSOL", "shear-induced migration"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7"]
+dev = ["pytest>=7.4", "ruff"]
+# FEniCSx solve/mesh backend is intentionally NOT a pip dependency: install the
+# dolfinx/dolfinx:v0.9.0 Docker image (or a conda-forge dolfinx env) and only the
+# solve/mesh entry points (hemoflow.solver.formulation / stationary,
+# hemoflow.geometries.mesher.build_dolfinx_mesh / from_gmsh) will import dolfinx,
+# ufl, basix, petsc4py, mpi4py lazily. Everything else imports on a plain host.
+fenicsx = []
+
+[project.scripts]
+hemoflow = "hemoflow.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hemoflow*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

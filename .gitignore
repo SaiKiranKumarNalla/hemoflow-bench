@@ -6,3 +6,6 @@ __pycache__/
 .env
 *.h5
 *.npz
+# generated web corpus bundle under site/data/ MUST be tracked (Pages deploys site/)
+!site/data/
+!site/data/**

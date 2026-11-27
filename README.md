@@ -1,7 +1,40 @@
-# hemoflow-bench
+# hemoflow & hemoflow-bench
 
-**A nondimensional, multi-fidelity CFD benchmark for physics–ML surrogates of red-blood-cell (RBC) shear
-encapsulation in microfluidic devices.**
+**Plug-in/plug-out open-source 2D Euler–Euler blood-flow library (`hemoflow`), interactive GitHub Pages corpus explorer (`site/`), and nondimensional multi-fidelity CFD benchmark across 13 microfluidic geometry families (`G1`–`G13`).**
+
+- **Interactive Web Explorer (GitHub Pages):** [`https://saikirankumarnalla.github.io/hemoflow-bench/`](https://saikirankumarnalla.github.io/hemoflow-bench/) — modify geometry & flow/blood design parameters across `G1`–`G13` (`1,139` `V1` Newtonian / `V2` Bird–Carreau / `V4` Wu Euler–Euler two-phase runs), inspect cross-sectional $u^*(y)$ and $\varphi(y)$ profiles, and watch explicit biconcave RBCs advect along RK4 streamlines weighted by $\varphi(x, y)$ to visualize the cell-free layer (CFL).
+- **Install the Python library (`hemoflow`):**
+  ```bash
+  pip install -e .        # host-safe NumPy/SciPy closures, registries, G1-G13 geometries & CLI
+  hemoflow list-plugins   # inspect registered viscosity, drag, lift, migration & geometry plugins
+  ```
+- **Plug-in / plug-out Euler–Euler API:**
+  ```python
+  import hemoflow
+
+  # Swap built-in or custom closures by name or Python callable:
+  @hemoflow.register_viscosity("my_custom_mu")
+  def my_custom_mu(phi):
+      return 1.0 + 2.5 * phi
+
+  cfg = hemoflow.EulerEulerConfig.v4_wu(re_p=12.0, d_hat=0.063, phi_in=0.35, k_star=2100.0)
+  cfg_custom = hemoflow.EulerEulerConfig(
+      re_p=12.0, d_hat=0.063, phi_in=0.35,
+      viscosity="my_custom_mu",
+      drag="wu_rusche_issa",
+      lift="saffman_plus_twowall",
+      migration="phillips_nonlocal",
+  )
+
+  # Host-safe geometry meshing (no FEniCSx required):
+  nodes, cells, tags, min_dy = hemoflow.geometries.mesher.graded_mesh_arrays("G4", {"theta_deg": 45})
+
+  # Full 2D Euler-Euler solve inside dolfinx/dolfinx:v0.9.0:
+  # res = hemoflow.solver.stationary.EulerEulerSolver(cfg).solve("G4")
+  # res.plot_streamlines_with_rbcs()
+  ```
+
+---
 
 High-fidelity CFD of RBC suspensions is too expensive to sample the joint design × patient space: one
 cell-resolved or two-fluid simulation of a single microchannel geometry at a single flow rate costs minutes

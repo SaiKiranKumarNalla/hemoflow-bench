@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hemoflow — Interactive RBC Encapsulation Corpus (G1–G13)</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cellipse cx='16' cy='16' rx='13' ry='8' fill='%23e11d48' stroke='%23ffffff' stroke-width='2'/%3E%3Cellipse cx='16' cy='16' rx='5.5' ry='3.2' fill='%236e0a24'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">hemoflow</span>
+    <span class="sub">2D Euler–Euler blood-flow corpus · G1–G13 · V1/V2/V4 · 1,139 CFD runs</span>
+  </div>
+  <div class="top-right">
+    <a href="https://github.com/SaiKiranKumarNalla/hemoflow-bench" target="_blank" rel="noopener">GitHub · hemoflow</a>
+    <span id="status-pill" class="pill">loading…</span>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- LEFT: design / physics controls -->
+  <aside class="panel controls">
+    <section class="card">
+      <h2>Geometry family</h2>
+      <select id="family-select"></select>
+      <div id="family-desc" class="muted small"></div>
+      <div id="family-topo" class="topo"></div>
+    </section>
+
+    <section class="card">
+      <h2>Model / variant</h2>
+      <select id="variant-select">
+        <option value="V4">V4 · Wu two-phase Euler–Euler (FEniCSx)</option>
+        <option value="V2">V2 · Bird–Carreau shear-thinning (OpenFOAM)</option>
+        <option value="V1">V1 · Newtonian (OpenFOAM)</option>
+        <option value="V4-V1">V4 − V1 · two-phase delta</option>
+      </select>
+      <h2>Field layer</h2>
+      <select id="field-select">
+        <option value="speed">Velocity |u*|</option>
+        <option value="phi">RBC volume fraction φ</option>
+        <option value="p">Pressure p*</option>
+        <option value="shear">Shear rate γ̇* = √(2D:D)</option>
+        <option value="vort">Vorticity / recirculation</option>
+      </select>
+    </section>
+
+    <section class="card">
+      <h2>Design parameters</h2>
+      <div id="geo-sliders"></div>
+      <h2>Flow / blood</h2>
+      <div id="flow-sliders"></div>
+    </section>
+
+    <section class="card">
+      <h2>RBC streamlines</h2>
+      <label class="row">RBC count <input id="rbc-count" type="range" min="100" max="600" step="50" value="250"><span id="rbc-count-val">250</span></label>
+      <label class="row chk"><input id="show-streamlines" type="checkbox" checked> streamlines</label>
+      <label class="row chk"><input id="show-rbcs" type="checkbox" checked> RBC glyphs</label>
+      <label class="row chk"><input id="phi-weight" type="checkbox" checked> weight by φ (V4 CFL)</label>
+    </section>
+
+    <section class="card">
+      <h2>Exact CFD run</h2>
+      <div class="muted small">distance to nearest run: <b id="nearest-dist">–</b></div>
+      <select id="exact-run-select"></select>
+      <button id="snap-btn" class="btn">Snap to nearest exact CFD run</button>
+      <div id="exact-badge" class="badge">interpolated</div>
+    </section>
+  </aside>
+
+  <!-- CENTER: canvas + colorbar -->
+  <section class="panel center">
+    <div class="canvas-wrap">
+      <canvas id="main-canvas" width="920" height="560"></canvas>
+      <canvas id="colorbar" width="26" height="560"></canvas>
+      <div id="probe-label" class="probe-label"></div>
+    </div>
+    <div class="charts">
+      <div class="chart-card"><h3>u*(y) at x*</h3><canvas id="chart-u" width="440" height="150"></canvas></div>
+      <div class="chart-card"><h3>φ(y) at x*</h3><canvas id="chart-phi" width="440" height="150"></canvas></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: QoI + python snippet -->
+  <aside class="panel right">
+    <section class="card">
+      <h2>QoI metrics</h2>
+      <div id="qoi-cards" class="qoi-grid"></div>
+    </section>
+    <section class="card">
+      <h2>Python — hemoflow snippet</h2>
+      <pre id="python-snippet" class="code"></pre>
+      <button id="copy-btn" class="btn">Copy</button>
+    </section>
+  </aside>
+</main>
+
+<footer class="foot muted small">
+  hemoflow 0.2.0 · data: 1,139 trimmed 2D CFD runs (star units, h1*=1, U*=1) · fields quantized uint8, masks packed · served from <code>site/data/*.bin.gz</code>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
